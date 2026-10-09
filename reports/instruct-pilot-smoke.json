@@ -1,0 +1,55 @@
+{
+  "purpose": "Infrastructure smoke test; fixture answers are not teacher-generated workload data",
+  "student": "Qwen/Qwen2.5-0.5B-Instruct",
+  "student_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "teacher": "Qwen/Qwen2.5-7B-Instruct",
+  "teacher_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "teacher_device": "cpu",
+  "student_device": "cuda:0",
+  "teacher_precision": "bfloat16, unquantized",
+  "student_precision": "float32 weights with bfloat16 autocast",
+  "optimizer": "adafactor",
+  "steps": 2,
+  "training_metrics": [
+    {
+      "batch_ce_loss": 10.568925857543945,
+      "batch_kd_loss": 9.73405933380127,
+      "epoch": 0.5,
+      "grad_norm": 441.01544189453125,
+      "learning_rate": 3e-05,
+      "loss": 10.791,
+      "step": 1
+    },
+    {
+      "batch_ce_loss": 9.210870742797852,
+      "batch_kd_loss": 8.32436466217041,
+      "epoch": 1.0,
+      "grad_norm": 368.056396484375,
+      "learning_rate": 3e-05,
+      "loss": 9.2455,
+      "step": 2
+    }
+  ],
+  "training_peak_gpu_allocated_mib": 5908.5,
+  "total_process_wall_seconds": 135.37,
+  "feature_free_reload": {
+    "checkpoint": "datas/ckpt/Qwen2.5-0.5B-Instruct_pard2_instruct_pilot",
+    "teacher_features": false,
+    "block_size": 4,
+    "proposal_ids": [
+      11613,
+      8948,
+      151645,
+      151645
+    ],
+    "proposal_text": "Twosystem<|im_end|><|im_end|>",
+    "peak_gpu_allocated_mib": 980.37060546875
+  },
+  "regression_tests_passed": 4,
+  "npu_export_tested": false,
+  "acceptance_tested": false,
+  "checkpoint": "datas/ckpt/Qwen2.5-0.5B-Instruct_pard2_instruct_pilot",
+  "config_sha256": "8f3cfcabfd1b650ca091eca2c496cf444032f7be967fc4e91304bf2bed3491bb",
+  "fixture_sha256": "3dd824bc95a2dc65ed284a5d0d09050678e4e49b61fc0c1766a89447331c8403",
+  "environment_lock_sha256": "d56871f6d395660697c28176f11f64db22adf53c03c560899f0de528b474d30b"
+}

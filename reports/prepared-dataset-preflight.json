@@ -1,0 +1,13 @@
+{
+  "rows": 2,
+  "max_seq_length": 64,
+  "truncated_rows": 0,
+  "token_lengths": {
+    "min": 33,
+    "p50": 33,
+    "p95": 47,
+    "max": 47
+  },
+  "error_count": 0,
+  "first_errors": []
+}

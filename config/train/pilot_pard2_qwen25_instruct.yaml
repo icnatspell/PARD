@@ -1,0 +1,51 @@
+# Infrastructure pilot only: fixture answers are not teacher-generated data.
+general:
+  model_name: Qwen/Qwen2.5-0.5B-Instruct
+  target_model_name: Qwen/Qwen2.5-7B-Instruct
+  target_device: cpu
+  cache_dir: cache
+  save_base_path: ./datas/ckpt
+  exp_name: pard2_instruct_pilot
+  data_path:
+    - ./datas/training_example/instruct_pilot.jsonl
+  para_num: 4
+  unused_tokenids: [151665, 151665, 151665]
+  down_sample_ration: 1.0
+  down_sample_ration_min: 0.0
+  target_layers: [-1]
+  feat_scale: 0.02
+  target_feat_mask: 0.5
+  prev_prob_loss: true
+  auto_resume: false
+
+loss:
+  ce_alpha: 0.1
+  kd_alpha: 1.0
+  kd_temperature: 1.0
+
+collator:
+  end_token_id: 151644
+
+train:
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  max_steps: 2
+  max_seq_length: 64
+  learning_rate: 0.00003
+  # Keep FP32 student weights while fitting optimizer state on the 10 GiB GPU.
+  optim: adafactor
+  lr_scheduler_type: constant
+  logging_steps: 1
+  save_steps: 2
+  save_total_limit: 1
+  report_to: none
+  bf16: true
+  gradient_checkpointing: true
+  dataset_num_proc: 1
+  dataloader_num_workers: 0
+  seed: 42
+
+data:
+  prompt_type: qwen
+  prompt_template:
+    qwen: "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{answer}<|im_end|>"

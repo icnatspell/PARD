@@ -50,6 +50,7 @@ def _target_feat_server(
         target_model_name,
         cache_dir=cache_dir,
         torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
     ).to(device)
     model.eval()
     for p in model.parameters():
@@ -224,7 +225,10 @@ def start_target_server(
 # util
 # =========================
 def load_lm_head_full(path, cache_dir=None):
-    model = AutoModelForCausalLM.from_pretrained(path, cache_dir=cache_dir)
+    model = AutoModelForCausalLM.from_pretrained(
+        path, cache_dir=cache_dir, torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
+    )
     lm_head = model.get_output_embeddings()
     for p in lm_head.parameters():
         p.requires_grad_(False)
@@ -526,6 +530,26 @@ class DraftConfigSaveCallback(TrainerCallback):
             return
         self._save(model, args.output_dir)
         self._save(model, self.draft_config_dir)
+        if torch.cuda.is_available():
+            logger.info(f"[peak_gpu_allocated_mib]: {torch.cuda.max_memory_allocated() / 2**20:.1f}")
+
+
+class Pard2Trainer(SFTTrainer):
+    def log(self, logs, start_time=None):
+        if "loss" in logs and isinstance(self.model, TargetFeatEmbedWarp):
+            logs = {**logs, **getattr(self.model, "last_loss_components", {})}
+        return super().log(logs, start_time)
+
+    def _save(self, output_dir=None, state_dict=None):
+        # The nn.Module wrapper bypasses PreTrainedModel.save_pretrained's
+        # handling of tied embedding/head weights. Preserve both names so
+        # Trainer resume and the inference converter can load this checkpoint.
+        if isinstance(self.model, TargetFeatEmbedWarp):
+            state_dict = dict(self.model.state_dict() if state_dict is None else state_dict)
+            student = self.model.base_model
+            if student.get_input_embeddings().weight is student.get_output_embeddings().weight:
+                state_dict["base_model.lm_head.weight"] = state_dict["base_model.lm_head.weight"].detach().cpu().clone()
+        return super()._save(output_dir, state_dict)
 
 
 # =========================
@@ -544,6 +568,7 @@ class TargetFeatEmbedWarp(nn.Module):
         kd_temperature: float = 1.0,
         target_feat_mask: float = 0.5,
         prev_prob_loss: bool = True,
+        distill_vocab_size: int = None,
     ):
         super().__init__()
 
@@ -557,6 +582,7 @@ class TargetFeatEmbedWarp(nn.Module):
         self.kd_temperature = float(kd_temperature)
         self.target_feat_mask = target_feat_mask
         self.prev_prob_loss = prev_prob_loss
+        self.distill_vocab_size = distill_vocab_size
 
         if self.target_head is not None:
             for p in self.target_head.parameters():
@@ -676,6 +702,15 @@ class TargetFeatEmbedWarp(nn.Module):
             shift_teacher_logits = teacher_logits[..., :-1, :].contiguous().float()
             shift_student_logits = student_logits[..., :-1, :].contiguous().float()
     
+            # Qwen2.5 model sizes pad their output heads differently. Distill
+            # on verified tokenizer IDs, renormalizing away unused rows.
+            if self.distill_vocab_size is not None:
+                size = self.distill_vocab_size
+                if not 0 < size <= min(shift_teacher_logits.size(-1), shift_student_logits.size(-1)):
+                    raise ValueError("Distillation vocabulary exceeds a model output head")
+                shift_teacher_logits = shift_teacher_logits[..., :size]
+                shift_student_logits = shift_student_logits[..., :size]
+
             teacher_prob = F.softmax(shift_teacher_logits / T, dim=-1)
             student_log_prob = F.log_softmax(shift_student_logits / T, dim=-1)
     
@@ -709,6 +744,12 @@ class TargetFeatEmbedWarp(nn.Module):
             raise ValueError(
                 "No loss was computed. Check labels / target_logits / prev_prob inputs."
             )
+
+        self.last_loss_components = {
+            name: value.detach().float().item()
+            for name, value in (("batch_ce_loss", ce_loss), ("batch_kd_loss", kd_loss))
+            if value is not None
+        }
 
         try:
             outputs["loss"] = final_loss
@@ -981,6 +1022,18 @@ def main(config_path):
     logger.info(f"[model_path]: {model_name}")
     logger.info(f"[save_path]: {output_dir}")
 
+    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+    distill_vocab_size = None
+    if target_model_name is not None:
+        target_tokenizer = AutoTokenizer.from_pretrained(target_model_name, cache_dir=cache_dir)
+        vocab = tokenizer.get_vocab()
+        if vocab != target_tokenizer.get_vocab():
+            raise ValueError("Student and teacher token IDs must match for distillation")
+        distill_vocab_size = max(vocab.values()) + 1
+        if set(vocab.values()) != set(range(distill_vocab_size)):
+            raise ValueError("Distillation requires contiguous shared tokenizer IDs")
+        logger.info(f"[distill_vocab_size]: {distill_vocab_size}")
+
     # ---------- build model ----------
     base_model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -1007,6 +1060,7 @@ def main(config_path):
             kd_temperature=float(config_loss.get("kd_temperature", 1.0)),
             target_feat_mask=float(config_general.get("target_feat_mask", 0.0)),
             prev_prob_loss=bool(config_general.get("prev_prob_loss", True)),
+            distill_vocab_size=distill_vocab_size,
         )
 
         prepare_pard2_infer_config(
@@ -1019,7 +1073,8 @@ def main(config_path):
         )
 
         local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-        device = f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu"
+        default_target_device = f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu"
+        device = config_general.get("target_device", default_target_device)
         logger.info(f"[device]: {device}")
 
         logger.info(f'[target_layers]: {target_layers}')
@@ -1034,7 +1089,6 @@ def main(config_path):
         model = base_model
 
     # ---------- tokenizer ----------
-    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
@@ -1062,6 +1116,10 @@ def main(config_path):
     )
 
     def formatting_prompts_func(example):
+        # Prepared datasets own chat formatting; no template config is needed.
+        if "text" in example:
+            return example["text"]
+
         prompt_template = config_data["prompt_template"][config_data["prompt_type"]]
 
         if "conversation" in example:
@@ -1081,12 +1139,6 @@ def main(config_path):
             prompt = conversations[0]["human"]
             answer = conversations[0]["assistant"]
             return prompt_template.format(prompt=prompt, answer=answer)
-
-        if "text" in example:
-            texts = example["text"]
-            if isinstance(texts, list):
-                return texts
-            return texts
 
         raise ValueError("Dataset example must contain either 'conversation' or 'text'.")
 
@@ -1116,7 +1168,7 @@ def main(config_path):
     )
 
     # ---------- trainer ----------
-    trainer = SFTTrainer(
+    trainer = Pard2Trainer(
         model=model,
         train_dataset=dataset,
         data_collator=data_collator,

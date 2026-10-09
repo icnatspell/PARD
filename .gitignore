@@ -4,3 +4,5 @@ cache/
 c/
 debug*
 __pycache__/
+.venv/
+logs/

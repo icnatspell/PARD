@@ -1,0 +1,2 @@
+{"text":"<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat is two plus two?<|im_end|>\n<|im_start|>assistant\nTwo plus two is four.<|im_end|>\n"}
+{"text":"<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nName a primary color.<|im_end|>\n<|im_start|>assistant\nRed is a primary color.<|im_end|>\n<|im_start|>user\nName another.<|im_end|>\n<|im_start|>assistant\nBlue.<|im_end|>\n"}

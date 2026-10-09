@@ -1,0 +1,44 @@
+{
+  "purpose": "Prepared JSONL text ingestion smoke test, including a multi-turn example",
+  "steps": 2,
+  "template_configuration_required": false,
+  "training_metrics": [
+    {
+      "batch_ce_loss": 9.82442569732666,
+      "batch_kd_loss": 9.26475715637207,
+      "epoch": 0.5,
+      "grad_norm": 330.3299865722656,
+      "learning_rate": 3e-05,
+      "loss": 10.2472,
+      "step": 1
+    },
+    {
+      "batch_ce_loss": 10.981830596923828,
+      "batch_kd_loss": 9.938482284545898,
+      "epoch": 1.0,
+      "grad_norm": 449.71990966796875,
+      "learning_rate": 3e-05,
+      "loss": 11.0367,
+      "step": 2
+    }
+  ],
+  "training_peak_gpu_allocated_mib": 5909.8,
+  "feature_free_reload": {
+    "checkpoint": "datas/ckpt/Qwen2.5-0.5B-Instruct_prepared_text_pilot",
+    "teacher_features": false,
+    "block_size": 4,
+    "proposal_ids": [
+      11613,
+      198,
+      151645,
+      151645
+    ],
+    "proposal_text": "Two\n<|im_end|><|im_end|>",
+    "peak_gpu_allocated_mib": 980.37060546875
+  },
+  "checkpoint": "datas/ckpt/Qwen2.5-0.5B-Instruct_prepared_text_pilot",
+  "acceptance_tested": false,
+  "speedbench_tested": false,
+  "config_sha256": "a3116f7f376b2316a127fbfb19fb4164223330b987932b208a657698696d11ec",
+  "fixture_sha256": "a1eb961aa9ffb1fe981d22fde812b467b4e44704ba0cac04923d7b36f4d5ed1b"
+}
